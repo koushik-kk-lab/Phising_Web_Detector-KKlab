@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>KK-LAB — Cyber Threat Engine</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    :root{
+      --green:#0ea64a;
+      --red:#d10000;
+      --orange:#ff8c00;
+      --muted:#f3f3f3;
+      --shadow: rgba(0,0,0,0.06);
+    }
+
+    body{
+      margin:0;
+      font-family:Inter,Helvetica,Arial,sans-serif;
+      background:#fff;
+      color:#111;
+      display:flex;
+      flex-direction:column;
+      align-items:center;
+      min-height:100vh;
+      padding:48px 24px;
+    }
+
+    h1{font-size:38px;margin:0;font-weight:800;letter-spacing:1px}
+
+    .row{display:flex;gap:12px;align-items:center;width:900px;max-width:96%}
+
+    input{
+      flex:1;padding:16px 20px;
+      border-radius:28px;border:none;
+      background:var(--muted);
+      font-size:16px;outline:none;
+    }
+
+    button{
+      border:none;padding:14px 22px;
+      border-radius:22px;background:#d0d0d0;
+      cursor:pointer;font-weight:600
+    }
+
+    #resultCard{
+      width:900px;max-width:96%;
+      margin-top:28px;border-radius:12px;
+      padding:22px;background:#f6fff6;
+      box-shadow:0 6px 22px var(--shadow);
+      display:none;
+    }
+
+    .status{display:flex;align-items:center;gap:14px}
+    .status-dot{width:14px;height:14px;border-radius:50%}
+    .status-text{font-size:22px;font-weight:700}
+
+    .score-row{margin-top:12px}
+    .score-label{font-size:14px;color:#333;margin-bottom:6px}
+    .score-bar{height:12px;background:#eee;border-radius:8px;overflow:hidden}
+    .score-fill{height:100%;width:0%;background:var(--green);transition:width .8s ease}
+
+    .reasons{margin-top:14px}
+    .reasons h4{margin:0 0 8px}
+    ul{margin:0;padding-left:18px;color:#222}
+
+    .domain-info{margin-top:16px;display:flex;gap:16px;flex-wrap:wrap}
+    .info-card{
+      background:#fff;border-radius:8px;
+      padding:10px 12px;
+      box-shadow:0 4px 14px rgba(0,0,0,0.04);
+      min-width:150px
+    }
+
+    .actions{margin-top:16px;display:flex;gap:10px}
+
+    .muted{color:#666;font-size:13px}
+
+    .download-btn{
+      background:#0b72d1;color:#fff;
+      border-radius:8px;padding:10px 12px;
+      border:none;cursor:pointer
+    }
+
+    .copy-btn{
+      background:#fff;border:1px solid #ddd;
+      border-radius:8px;padding:10px 12px;
+      cursor:pointer
+    }
+  </style>
+</head>
+
+<body>
+
+  <!-- ============================ -->
+  <!--        KK-LAB HEADER         -->
+  <!-- ============================ -->
+  <div style="display:flex; flex-direction:column; align-items:center; gap:6px; margin-bottom:30px;">
+
+    <!-- SVG LOGO -->
+    <svg width="70" height="70" viewBox="0 0 200 200" fill="none">
+      <rect x="20" y="20" width="160" height="160" rx="26" fill="#0ea64a10" stroke="#0ea64a" stroke-width="8"/>
+      <path d="M70 140 L100 70 L130 140"
+            stroke="#0ea64a"
+            stroke-width="14"
+            stroke-linecap="round"
+            stroke-linejoin="round"/>
+      <circle cx="100" cy="92" r="10" fill="#0ea64a"/>
+    </svg>
+
+    <h1>KK-LAB</h1>
+    <div style="font-size:15px; color:#666; font-weight:500;">
+      Cyber Threat Intelligence Engine
+    </div>
+  </div>
+
+  <!-- ============================ -->
+  <!--           INPUT BAR          -->
+  <!-- ============================ -->
+  <div class="row">
+    <input id="urlInput"
+           placeholder="Paste URL and press Enter or Check"
+           onkeydown="if(event.key==='Enter') analyzeURL()">
+    <button onclick="analyzeURL()">Check</button>
+  </div>
+
+  <!-- ============================ -->
+  <!--         RESULT CARD          -->
+  <!-- ============================ -->
+  <div id="resultCard">
+
+    <div class="status">
+      <div id="statusDot" class="status-dot" style="background:var(--green)"></div>
+      <div id="statusText" class="status-text">Legitimate</div>
+    </div>
+
+    <div class="score-row">
+      <div class="score-label" id="scoreLabel">Threat Score: 0%</div>
+      <div class="score-bar"><div id="scoreFill" class="score-fill"></div></div>
+    </div>
+
+    <div class="reasons">
+      <h4>Reasons</h4>
+      <ul id="reasonsList"></ul>
+    </div>
+
+    <div class="domain-info" id="domainInfo">
+      <div class="info-card"><div class="muted">Domain</div><div id="domName"></div></div>
+      <div class="info-card"><div class="muted">IP</div><div id="domIP"></div></div>
+      <div class="info-card"><div class="muted">MX</div><div id="domMX"></div></div>
+      <div class="info-card"><div class="muted">SSL days left</div><div id="domSSL"></div></div>
+      <div class="info-card"><div class="muted">Domain age (days)</div><div id="domAge"></div></div>
+    </div>
+
+    <div class="actions">
+      <button class="download-btn" onclick="downloadReport()">Download PDF Report</button>
+      <button class="copy-btn" onclick="copyReport()">Copy Report</button>
+    </div>
+
+  </div>
+
+<!-- ============================ -->
+<!--            SCRIPT            -->
+<!-- ============================ -->
+
+<script>
+let lastReport = null;
+
+async function analyzeURL(){
+  const url = document.getElementById("urlInput").value.trim();
+  if(!url) return alert("Enter a URL!");
+
+  const res = await fetch("/predict", {
+    method:"POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify({url})
+  });
+
+  const data = await res.json();
+  lastReport = data;
+  showResult(data);
+}
+
+function showResult(data){
+  const card = document.getElementById("resultCard");
+  card.style.display = "block";
+
+  const statusDot = document.getElementById("statusDot");
+  const statusText = document.getElementById("statusText");
+  const scoreLabel = document.getElementById("scoreLabel");
+  const scoreFill = document.getElementById("scoreFill");
+  const reasonsList = document.getElementById("reasonsList");
+
+  const domName = document.getElementById("domName");
+  const domIP = document.getElementById("domIP");
+  const domMX = document.getElementById("domMX");
+  const domSSL = document.getElementById("domSSL");
+  const domAge = document.getElementById("domAge");
+
+  // ========== Colors ==========
+  const color = data.color || "green";
+  if(color === "green") statusDot.style.background = "var(--green)";
+  else if(color === "orange") statusDot.style.background = "var(--orange)";
+  else statusDot.style.background = "var(--red)";
+
+  statusText.innerText = data.prediction;
+  scoreLabel.innerText = `Threat Score: ${data.score}%`;
+  scoreFill.style.width = `${data.score}%`;
+  scoreFill.style.background =
+    color === "green" ? "var(--green)" :
+    color === "orange" ? "var(--orange)" :
+    "var(--red)";
+
+  // ========== Reasons ==========
+  reasonsList.innerHTML = "";
+  if(data.reasons?.length){
+    data.reasons.forEach(r => {
+      let li = document.createElement("li");
+      li.textContent = r;
+      reasonsList.appendChild(li);
+    });
+  } else {
+    let li = document.createElement("li");
+    li.textContent = "No suspicious indicators detected.";
+    reasonsList.appendChild(li);
+  }
+
+  // ========== Domain Info ==========
+  const info = data.domain_info || {};
+  domName.innerText = info.domain || "-";
+  domIP.innerText = info.ip || "-";
+  domMX.innerText = (info.mx_records?.length) ? info.mx_records.join(", ") : "-";
+  domSSL.innerText = (info.ssl_days ?? "-");
+  domAge.innerText = (info.age_days ?? "-");
+}
+
+function copyReport(){
+  if(!lastReport) return;
+  navigator.clipboard.writeText(JSON.stringify(lastReport, null, 2));
+  alert("Report copied to clipboard");
+}
+
+async function downloadReport(){
+  if(!lastReport) return alert("Run a scan first");
+
+  const res = await fetch("/report", {
+    method: "POST",
+    headers: {"Content-Type":"application/json"},
+    body: JSON.stringify(lastReport)
+  });
+
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "KK-LAB-report.pdf";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+</script>
+
+</body>
+</html>
